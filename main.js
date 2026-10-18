@@ -1,5 +1,4 @@
 
-
 /*
   WORKER: RESULTADOS - CLUB BOWLING PIN OCHO
   CONEXIÓN YA CONFIGURADA:
@@ -22,6 +21,34 @@ const ICS_URL =
 const DIAS_RECIENTES = 30;
 const resultsHandler = {
   async fetch(request) {
+    try {
+      const ruta = new URL(request.url).pathname;
+      if (ruta === "/datos-resultados.json") {
+        const datos = await cargarDatosResultados();
+        return new Response(JSON.stringify(datos), {
+          headers: {
+            "content-type": "application/json; charset=UTF-8",
+            "cache-control": "public, max-age=60"
+          }
+        });
+      }
+      const html = construirPagina([], [], [], []);
+      return new Response(html, {
+        headers: {
+          "content-type": "text/html; charset=UTF-8",
+          "cache-control": "no-store"
+        }
+      });
+    } catch (error) {
+      console.error("[Resultados] Error:", error);
+      return new Response(construirPaginaError(error.message), {
+        status: 500,
+        headers: { "content-type": "text/html; charset=UTF-8", "cache-control": "no-store" }
+      });
+    }
+  }
+};
+async function cargarDatosResultados() {
     try {
       const inicioCarga = Date.now();
       console.log("[Resultados] Iniciando carga de API y calendario");
@@ -65,34 +92,13 @@ const resultsHandler = {
           eventosCalendario,
           jornadas
         );
-      const html = construirPagina(
-        jornadas,
-        torneosFinalizados,
-        resultadosTorneos,
-        cronicasResultados
-      );
-      console.log("[Resultados] HTML preparado: " + html.length + " caracteres; " + (Date.now() - inicioCarga) + " ms");
-      return new Response(html, {
-        headers: {
-          "content-type": "text/html; charset=UTF-8",
-          "cache-control": "no-store"
-        }
-      });
+      console.log("[Resultados] Datos preparados en " + (Date.now() - inicioCarga) + " ms");
+      return { jornadas, torneosFinalizados, resultadosTorneos, cronicasResultados };
     } catch (error) {
-      console.error("[Resultados] Error:", error);
-      return new Response(
-        construirPaginaError(error.message),
-        {
-          status: 500,
-          headers: {
-            "content-type": "text/html; charset=UTF-8",
-            "cache-control": "no-store"
-          }
-        }
-      );
+      console.error("[Resultados] Error de datos:", error);
+      throw error;
     }
-  }
-};
+}
 async function obtenerEventosCalendario() {
   try {
     const respuesta = await fetch(ICS_URL, {
@@ -2617,7 +2623,7 @@ function construirPagina(
       </p>
     </header>
     ${
-      jornadas.length
+      true
         ? `
           <nav class="navegacion-interna">
             <button
@@ -2681,10 +2687,10 @@ function construirPagina(
     </footer>
   </div>
   <script>
-    const jornadas = ${jornadasJson};
-    const torneosFinalizados = ${torneosFinalizadosJson};
-    const resultadosTorneos = ${resultadosTorneosJson};
-    const cronicasResultados = ${cronicasResultadosJson};
+    let jornadas = ${jornadasJson};
+    let torneosFinalizados = ${torneosFinalizadosJson};
+    let resultadosTorneos = ${resultadosTorneosJson};
+    let cronicasResultados = ${cronicasResultadosJson};
     const DIAS_RECIENTES = ${DIAS_RECIENTES};
     function escaparHtml(texto) {
       return String(texto ?? "")
@@ -6797,11 +6803,30 @@ function construirPagina(
       detalle.classList.remove("visible");
       detalle.innerHTML = "";
     }
-    if (jornadas.length) {
-      cargarPortadaInformes();
-      cargarTemporadasPalmares();
-      mostrarPortadaResultados();
+    async function iniciarResultados() {
+      const panel = document.getElementById("tarjetasInformesPortada");
+      if (panel) panel.textContent = "Cargando informes...";
+      try {
+        const respuesta = await fetch("/datos-resultados.json", {cache:"no-store"});
+        if (!respuesta.ok) throw new Error("HTTP " + respuesta.status);
+        const datos = await respuesta.json();
+        jornadas = Array.isArray(datos.jornadas) ? datos.jornadas : [];
+        torneosFinalizados = Array.isArray(datos.torneosFinalizados) ? datos.torneosFinalizados : [];
+        resultadosTorneos = Array.isArray(datos.resultadosTorneos) ? datos.resultadosTorneos : [];
+        cronicasResultados = Array.isArray(datos.cronicasResultados) ? datos.cronicasResultados : [];
+        if (!jornadas.length) {
+          if (panel) panel.textContent = "No hay informes disponibles.";
+          return;
+        }
+        cargarPortadaInformes();
+        cargarTemporadasPalmares();
+        mostrarPortadaResultados();
+      } catch (error) {
+        console.error("[Resultados] Error cargando informes:", error);
+        if (panel) panel.textContent = "Error al cargar los informes: " + error.message;
+      }
     }
+    iniciarResultados();
   </script>
 </body>
 </html>
