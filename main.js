@@ -1,3 +1,5 @@
+
+
 /*
   WORKER: RESULTADOS - CLUB BOWLING PIN OCHO
   CONEXIÓN YA CONFIGURADA:
@@ -21,14 +23,18 @@ const DIAS_RECIENTES = 30;
 const resultsHandler = {
   async fetch(request) {
     try {
+      const inicioCarga = Date.now();
+      console.log("[Resultados] Iniciando carga de API y calendario");
       const [respuesta, eventosCalendario] = await Promise.all([
         fetch(API_DATOS, {
           headers: {
             "accept": "application/json"
-          }
+          },
+          signal: AbortSignal.timeout(20000)
         }),
         obtenerEventosCalendario()
       ]);
+      console.log("[Resultados] Fuentes recibidas en " + (Date.now() - inicioCarga) + " ms");
       if (!respuesta.ok) {
         throw new Error(
           "No se han podido obtener los datos de partidas."
@@ -65,6 +71,7 @@ const resultsHandler = {
         resultadosTorneos,
         cronicasResultados
       );
+      console.log("[Resultados] HTML preparado: " + html.length + " caracteres; " + (Date.now() - inicioCarga) + " ms");
       return new Response(html, {
         headers: {
           "content-type": "text/html; charset=UTF-8",
@@ -72,6 +79,7 @@ const resultsHandler = {
         }
       });
     } catch (error) {
+      console.error("[Resultados] Error:", error);
       return new Response(
         construirPaginaError(error.message),
         {
@@ -90,7 +98,8 @@ async function obtenerEventosCalendario() {
     const respuesta = await fetch(ICS_URL, {
       headers: {
         "accept": "text/calendar,text/plain;q=0.9,*/*;q=0.8"
-      }
+      },
+      signal: AbortSignal.timeout(4000)
     });
     if (!respuesta.ok) {
       return [];
@@ -98,8 +107,8 @@ async function obtenerEventosCalendario() {
     const ics = await respuesta.text();
     return parsearEventosIcs(ics);
   } catch (error) {
-    // El calendario es una mejora auxiliar. Si falla,
-    // Resultados sigue funcionando exactamente como antes.
+    // El calendario es auxiliar: no debe bloquear la página.
+    console.warn("[Resultados] Calendario no disponible:", String(error));
     return [];
   }
 }
@@ -7063,5 +7072,4 @@ function escaparHtml(texto) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
-
 Deno.serve((request) => resultsHandler.fetch(request));
